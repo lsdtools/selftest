@@ -1,0 +1,24 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/points",
+  "display_name": "Test Points",
+  "version": "1.0.0",
+  "description": "A point set from a CSV file: load it (with a point budget), then deliver it as a points layer.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": ["test", "points", "csv"],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/data",
+  "dependencies": {},
+  "tool": "lsdtest_points.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_points.tool:tool",
+    "dependencies": {},
+    "runtime_dependencies": {}
+  },
+  "warmup": {}
+}

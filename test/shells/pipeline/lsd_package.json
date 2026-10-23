@@ -1,0 +1,39 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/pipeline",
+  "display_name": "Test Pipeline",
+  "version": "1.0.0",
+  "description": "The pipeline graph and the run log for the kernel's Grounds, built from the product's views.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": [
+    "test",
+    "pipeline",
+    "run-log"
+  ],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/shells",
+  "dependencies": {},
+  "tool": "lsdtest_pipeline.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_pipeline.tool:tool",
+    "dependencies": {},
+    "runtime_dependencies": {}
+  },
+  "frontend": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_pipeline.frontend:frontend",
+    "dependencies": {},
+    "runtime_dependencies": {},
+    "modules": [
+      "__init__.py",
+      "frontend.py"
+    ]
+  },
+  "warmup": {}
+}

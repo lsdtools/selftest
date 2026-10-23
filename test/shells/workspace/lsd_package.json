@@ -1,0 +1,40 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/workspace",
+  "display_name": "Test Workspace",
+  "version": "1.0.0",
+  "description": "The Desktop workspace the kernel's Grounds run in: the entity tree, the inspector and the tables, with the product's project tree behaviour.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": [
+    "test",
+    "workspace",
+    "tree",
+    "inspector"
+  ],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/shells",
+  "dependencies": {},
+  "tool": "lsdtest_workspace.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_workspace.tool:tool",
+    "dependencies": {},
+    "runtime_dependencies": {}
+  },
+  "frontend": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_workspace.frontend:frontend",
+    "dependencies": {},
+    "runtime_dependencies": {},
+    "modules": [
+      "__init__.py",
+      "frontend.py"
+    ]
+  },
+  "warmup": {}
+}

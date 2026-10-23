@@ -1,0 +1,24 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/rows",
+  "display_name": "Test Rows",
+  "version": "1.0.0",
+  "description": "A deterministic table loaded from nothing and a cheap shape over it: the engine's per-entity and per-step pipeline cost, without I/O or a domain.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": ["test", "rows", "scale"],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/data",
+  "dependencies": {},
+  "tool": "lsdtest_rows.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_rows.tool:tool",
+    "dependencies": {},
+    "runtime_dependencies": {}
+  },
+  "warmup": {}
+}

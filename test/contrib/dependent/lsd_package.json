@@ -1,0 +1,28 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/dependent",
+  "display_name": "Test Dependent",
+  "version": "1.0.0",
+  "description": "A package that depends on lsdtest/points: one shape step over its point table. It exercises dependency resolution, staging and activation order.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": ["test", "dependencies"],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/contrib",
+  "dependencies": {
+    "lsdtest/points": ">=1.0.0"
+  },
+  "tool": "lsdtest_dependent.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_dependent.tool:tool",
+    "dependencies": {
+      "lsdtest/points": ">=1.0.0"
+    },
+    "runtime_dependencies": {}
+  },
+  "warmup": {}
+}

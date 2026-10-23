@@ -1,0 +1,34 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/viewer",
+  "display_name": "Test Viewer",
+  "version": "1.0.0",
+  "description": "The 3D viewer view for the kernel's Grounds and benchmarks, from the frontend context; it declares the render warm-up.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": ["test", "viewer3d", "render"],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/shells",
+  "dependencies": {},
+  "tool": "lsdtest_viewer.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_viewer.tool:tool",
+    "dependencies": {},
+    "runtime_dependencies": {}
+  },
+  "frontend": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_viewer.frontend:frontend",
+    "dependencies": {},
+    "runtime_dependencies": {},
+    "modules": ["__init__.py", "frontend.py"]
+  },
+  "warmup": {
+    "frontend": {"modules": [], "render": true}
+  }
+}
