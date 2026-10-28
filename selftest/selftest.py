@@ -2,22 +2,27 @@
 
 Run it in a checkout (development, or after a ``git pull``)::
 
-    python selftest/selftest.py [--lsdtools PATH | --lsdtools-python PYTHON] [--keep] [--json]
+    python selftest/selftest.py [--lsdtools PATH | --lsdtools-python PYTHON] [--release URL] [--keep] [--json]
 
-``lsdtools selftest`` downloads this repository and runs this same file with its own lsdtools, so a
-developer and anyone else run exactly the same checks.
+``lsdtools selftest`` downloads this repository's release and runs this same file with its own lsdtools, so
+a developer and anyone else run exactly the same checks.
 
-Everything happens in a scratch home that shares the installed runtime store (nothing is downloaded
-again; with no runtime installed, the scratch home sets one up). The extension packages are copied
-there as an author's local packages (the copies have a blank publisher; their code is untouched) and
-linked, and their pipelines run headless in the runtime's Python (``pipelines.py``). A project that
-pins them opens in a hidden window, which must hold their code for a person's review (linked code is
-project code, and only a person enables it) while the window renders through its own path; the
-window closes, the project runs headless and the runtime's Python runs. Each step is timed: the report
-is also a small benchmark. Standard library only.
+Everything happens in scratch homes that share the installed runtime store (nothing is downloaded again;
+with no runtime installed, the scratch home sets one up), in two lanes:
 
-The shells (``test/shells``) stand in for the runtime's own shells in a source run, so an installed
-runtime, which ships its own, never links them.
+- **release** (the GitHub release lane): the test packages install from this repository's release
+  (``lsdtools install <release> --unreviewed --project P``: the person who runs the selftest decides),
+  sealed for this machine and locked into a new project; their pipelines run in the runtime's Python
+  (``pipelines.py``); the project opens in a hidden window, where every package must be effective; one
+  package is disabled and enabled again through the window's action door, each change settled on its
+  commit receipt; the window is photographed through its own render path and closed, the saved project
+  must record the packages enabled, and it runs headless;
+- **local** (an author's linked folders): the same packages linked as local packages (their copies have
+  a blank publisher; their code is untouched); a project pinning them opens, and the window must list
+  them but run none: linked code is project code, and only a person enables it.
+
+Each step is timed: the report is also a small benchmark. Standard library only. The shells
+(``test/shells``) stand in for the runtime's own in a source run, so an installed runtime never takes them.
 
 Exit status 0 when every step passed, 1 otherwise; ``--json`` prints one ``lsd.selftest.v1`` document.
 """
@@ -37,10 +42,15 @@ import zlib
 from pathlib import Path
 
 SCHEMA = "lsd.selftest.v1"
+VERSION = "1.1.0"
 HERE = Path(__file__).resolve().parent
 REPOSITORY = HERE.parent
-#: The packages a selftest links, in dependency order (a dependent after what it needs).
+RELEASE = f"https://github.com/lsdtools/selftest@v{VERSION}"
+#: The packages a selftest takes, in dependency order (a dependent after what it needs).
 PACKAGES = ("data/rows", "data/points", "contrib/dependent")
+#: The package disabled and enabled again in the open window: nothing depends on it.
+TOGGLED = "lsdtest/rows"
+_SETTLED = {"committed", "rejected", "withdrawn", "conflict", "failed"}
 
 
 class StepFailed(Exception):
@@ -48,13 +58,15 @@ class StepFailed(Exception):
 
 
 class Selftest:
-    def __init__(self, lsdtools: list[str], work: Path, target: str | None, *, echo=None) -> None:
-        self.lsdtools, self.work, self.target, self.echo = lsdtools, work, target, echo
-        self.home = work / "home"
+    def __init__(self, lsdtools: list[str], work: Path, target: str | None, release: str, *, echo=None) -> None:
+        self.lsdtools, self.work, self.target, self.release, self.echo = lsdtools, work, target, release, echo
+        self.home = work / "home-release"
         self.store: Path | None = None
+        self.names: list[str] = []
         self.staged: list[tuple[str, str, Path]] = []
         self.steps: list[dict] = []
         self.session: str | None = None
+        self.project: Path | None = None
 
     # -- running lsdtools ------------------------------------------------------------------------------
 
@@ -79,13 +91,17 @@ class Selftest:
         document = json.loads(lines[-1])
         if done.returncode != 0 or document.get("ok") is not True:
             error = document.get("error") or {}
-            raise StepFailed(f"lsdtools {' '.join(argv)} exited {done.returncode}: {error.get('message', '')}")
+            raise StepFailed(f"lsdtools {' '.join(argv[:3])} exited {done.returncode}: {error.get('message', '')}")
         return document
 
     def python(self, *argv: str, timeout: float = 600.0) -> subprocess.CompletedProcess:
         """The runtime's own Python (``lsdtools python``)."""
         return subprocess.run(self._argv("python", *argv), capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=timeout)
+
+    def action(self, kind: str, *params: str, timeout: float = 300.0) -> dict:
+        argv = [item for param in params for item in ("-p", param)]
+        return self.lsd("action", self.session, kind, *argv, timeout=timeout)["data"]["result"]
 
     def step(self, name: str, function) -> None:
         started = time.perf_counter()
@@ -102,7 +118,7 @@ class Selftest:
             if self.echo is not None:
                 self.echo(_line(row))
 
-    # -- the checks ------------------------------------------------------------------------------------
+    # -- the shared checks -----------------------------------------------------------------------------
 
     def find_runtime(self) -> str:
         """Share the installed runtime's store; set one up in the scratch home when there is none."""
@@ -121,6 +137,109 @@ class Selftest:
         if failed:
             raise StepFailed("; ".join(failed))
         return ", ".join(row["check"] for row in checks)
+
+    def new_project(self, name: str) -> str:
+        created = self.lsd("new", "project", str(self.work / "projects" / name))
+        self.project = Path(created["data"]["project"])
+        return str(self.project)
+
+    def open_window(self) -> str:
+        opened = self.lsd("open", str(self.project), "--window", "hidden", timeout=300)
+        self.session = str(opened["data"]["session"])
+        return f"session {self.session}"
+
+    def packages(self) -> dict:
+        return {row["name"]: row for row in self.action("describe_project_packages").get("packages", [])}
+
+    def close(self) -> str:
+        self.lsd("close", self.session, timeout=300)
+        self.session = None
+        return "closed"
+
+    # -- the release lane ------------------------------------------------------------------------------
+
+    def install_release(self) -> str:
+        """Install the release's packages and lock them into the new project (a person runs the selftest)."""
+        installed = self.lsd("install", self.release, "--unreviewed", "--project", str(self.project),
+                             timeout=900)["data"]
+        self.names = [row["name"] for row in installed["installed"]]
+        wanted = [json.loads((REPOSITORY / "test" / relative / "lsd_package.json").read_text("utf-8"))["name"]
+                  for relative in PACKAGES]
+        if sorted(self.names) != sorted(wanted) or sorted(installed.get("pinned", [])) != sorted(wanted):
+            raise StepFailed(f"installed {self.names} and locked {installed.get('pinned')}, not {wanted}")
+        lanes = {row["lane"] for row in installed["installed"]}
+        if lanes != {"url"}:
+            raise StepFailed(f"the release installed through {sorted(lanes)}, not the url lane")
+        return f"{len(self.names)} installed from {self.release} and locked into the project"
+
+    def pipelines(self) -> str:
+        done = self.python(str(HERE / "pipelines.py"))
+        lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
+        if not lines:
+            raise StepFailed(f"pipelines.py exited {done.returncode}: {done.stderr.strip()[-400:]}")
+        report = json.loads(lines[-1])
+        failed = [f"{row['check']}: {row['detail']}" for row in report["checks"] if not row["ok"]]
+        if failed or done.returncode != 0:
+            raise StepFailed("; ".join(failed) or f"pipelines.py exited {done.returncode}")
+        return ", ".join(f"{row['check']} {row['ms']:.0f} ms" for row in report["checks"])
+
+    def effective(self) -> str:
+        rows = self.packages()
+        inert = [name for name in self.names if rows.get(name, {}).get("effective") is not True]
+        if inert:
+            raise StepFailed(f"not effective in the window: {', '.join(inert)}")
+        return f"{len(self.names)} effective"
+
+    def commit(self, kind: str, *params: str, deadline: float = 120.0) -> dict:
+        """Send one project command and wait for its receipt to settle (the host's own signal)."""
+        receipt = self.action(kind, *params).get("receipt") or {}
+        request = receipt.get("request_id")
+        if not request:
+            raise StepFailed(f"{kind} returned no receipt")
+        limit = time.monotonic() + deadline
+        while receipt.get("status") not in _SETTLED:
+            if time.monotonic() > limit:
+                raise StepFailed(f"{kind} never settled: {receipt.get('status')}")
+            receipt = self.action("get_project_command_receipt", f"request_id={request}").get("receipt") or {}
+        if receipt["status"] != "committed":
+            raise StepFailed(f"{kind} was {receipt['status']}: {receipt.get('message') or ''}")
+        return receipt
+
+    def toggle(self) -> str:
+        self.commit("set_project_package_enabled", f"package={TOGGLED}", "enabled=false")
+        if self.packages().get(TOGGLED, {}).get("effective") is not False:
+            raise StepFailed(f"{TOGGLED} is still effective after it was disabled")
+        self.commit("set_project_package_enabled", f"package={TOGGLED}", "enabled=true")
+        if self.packages().get(TOGGLED, {}).get("effective") is not True:
+            raise StepFailed(f"{TOGGLED} is not effective after it was enabled again")
+        return f"{TOGGLED} disabled and enabled again, each committed"
+
+    def snapshot(self) -> str:
+        picture = self.work / "window.png"
+        self.lsd("snapshot", self.session, "--out", str(picture), timeout=300)
+        width, height, spread = _png_spread(picture.read_bytes())
+        if spread <= 1.0:
+            raise StepFailed(f"the window rendered {width}x{height} with a spread of {spread:.2f}: blank")
+        return f"{width}x{height}, spread {spread:.1f}"
+
+    def saved(self) -> str:
+        document = json.loads(self.project.read_text("utf-8"))
+        enabled = document.get("package_state", {}).get("enabled", {})
+        lock = document.get("package_lock", {})
+        wrong = [name for name in self.names if enabled.get(name) is not True or name not in lock]
+        if wrong:
+            raise StepFailed(f"the saved project does not lock and enable {', '.join(wrong)}")
+        return "the saved project locks and enables every package"
+
+    def run_project(self) -> str:
+        self.lsd("run", str(self.project), timeout=900)
+        return "ran headless"
+
+    # -- the local lane --------------------------------------------------------------------------------
+
+    def local_home(self) -> str:
+        self.home = self.work / "home-local"
+        return str(self.home)
 
     def stage(self) -> str:
         """Copy each package as an author's local package (blank publisher; code untouched)."""
@@ -144,24 +263,9 @@ class Selftest:
             raise StepFailed(f"not linked: {', '.join(missing)}")
         return f"{len(self.staged)} linked"
 
-    def pipelines(self) -> str:
-        done = self.python(str(HERE / "pipelines.py"))
-        lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
-        if not lines:
-            raise StepFailed(f"pipelines.py exited {done.returncode}: {done.stderr.strip()[-400:]}")
-        report = json.loads(lines[-1])
-        failed = [f"{row['check']}: {row['detail']}" for row in report["checks"] if not row["ok"]]
-        if failed or done.returncode != 0:
-            raise StepFailed("; ".join(failed) or f"pipelines.py exited {done.returncode}")
-        return ", ".join(f"{row['check']} {row['ms']:.0f} ms" for row in report["checks"])
-
-    def new_project(self) -> str:
-        created = self.lsd("new", "project", str(self.work / "projects" / "selftest"))
-        self.project = Path(created["data"]["project"])
-        return str(self.project)
-
-    def pin_packages(self) -> str:
+    def pin_linked(self) -> str:
         """Pin every linked package in the project document, enabled, as a saved project records them."""
+        self.new_project("local")
         document = json.loads(self.project.read_text("utf-8"))
         names = [name for name, _version, _folder in self.staged]
         document["packages"] = [f"{name}@{version}" for name, version, _folder in self.staged]
@@ -169,21 +273,11 @@ class Selftest:
         document["package_state"] = {"enabled": {name: True for name in names}}
         self.project.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
         self.lsd("project", "check", str(self.project))
-        listed = json.dumps(self.lsd("project", "packages", str(self.project))["data"])
-        missing = [name for name in names if name not in listed]
-        if missing:
-            raise StepFailed(f"the project does not list {', '.join(missing)}")
         return f"{len(names)} pinned"
-
-    def open_window(self) -> str:
-        opened = self.lsd("open", str(self.project), "--window", "hidden", timeout=300)
-        self.session = str(opened["data"]["session"])
-        return f"session {self.session}"
 
     def held_for_review(self) -> str:
         """Linked code is project code: the window lists each package but runs none until a person reviews it."""
-        described = self.lsd("action", self.session, "describe_project_packages")["data"]["result"]
-        rows = {row["name"]: row for row in described.get("packages", [])}
+        rows = self.packages()
         names = [name for name, _version, _folder in self.staged]
         unlisted = [name for name in names if name not in rows]
         if unlisted:
@@ -192,23 +286,6 @@ class Selftest:
         if running:
             raise StepFailed(f"linked code runs without a person's review: {', '.join(running)}")
         return f"{len(names)} listed, none run before review"
-
-    def snapshot(self) -> str:
-        picture = self.work / "window.png"
-        self.lsd("snapshot", self.session, "--out", str(picture), timeout=300)
-        width, height, spread = _png_spread(picture.read_bytes())
-        if spread <= 1.0:
-            raise StepFailed(f"the window rendered {width}x{height} with a spread of {spread:.2f}: blank")
-        return f"{width}x{height}, spread {spread:.1f}"
-
-    def close(self) -> str:
-        self.lsd("close", self.session, timeout=300)
-        self.session = None
-        return "closed"
-
-    def run_project(self) -> str:
-        self.lsd("run", str(self.project), timeout=900)
-        return "ran headless"
 
     def runtime_python(self) -> str:
         done = self.python("-c", "import sys, lsdtools; print(sys.version.split()[0])", timeout=300)
@@ -251,7 +328,7 @@ def _remove(path: Path) -> None:
 
 
 def _line(row: dict) -> str:
-    return f"{'ok  ' if row['ok'] else 'FAIL'} {row['step']:<16} {row['ms']:>9.0f} ms  {row['detail']}"
+    return f"{'ok  ' if row['ok'] else 'FAIL'} {row['step']:<18} {row['ms']:>9.0f} ms  {row['detail']}"
 
 
 def _lsdtools_command(executable: str | None, python: str | None) -> list[str]:
@@ -271,19 +348,25 @@ def main(argv=None) -> int:
     command.add_argument("--lsdtools", help="the lsdtools executable to test (default: lsdtools on PATH)")
     command.add_argument("--lsdtools-python", help="a Python whose lsdtools to test (python -m lsdtools._manager)")
     parser.add_argument("--target", choices=("production", "development"), help="lsdtools' --target")
+    parser.add_argument("--release", default=RELEASE, help=f"the GitHub release to install (default: {RELEASE})")
     parser.add_argument("--keep", action="store_true", help="keep the scratch folder")
     parser.add_argument("--json", action="store_true", help="print one lsd.selftest.v1 document")
     args = parser.parse_args(argv)
     work = Path(tempfile.mkdtemp(prefix="lsd-selftest-"))
     # Each step is reported as it ends: on stdout, or on stderr while stdout carries the JSON document.
     echo = (lambda line: print(line, file=sys.stderr, flush=True)) if args.json else (lambda line: print(line, flush=True))
-    test = Selftest(_lsdtools_command(args.lsdtools, args.lsdtools_python), work, args.target, echo=echo)
+    test = Selftest(_lsdtools_command(args.lsdtools, args.lsdtools_python), work, args.target, args.release,
+                    echo=echo)
     started = time.perf_counter()
-    plan = [("runtime", test.find_runtime), ("doctor", test.doctor), ("stage-packages", test.stage),
-            ("link-packages", test.link), ("pipelines", test.pipelines), ("new-project", test.new_project),
-            ("pin-packages", test.pin_packages), ("open-hidden", test.open_window),
-            ("held-for-review", test.held_for_review), ("snapshot", test.snapshot), ("close", test.close),
-            ("run-headless", test.run_project), ("runtime-python", test.runtime_python)]
+    plan = [("runtime", test.find_runtime), ("doctor", test.doctor),
+            ("new-project", lambda: test.new_project("release")), ("install-release", test.install_release),
+            ("pipelines", test.pipelines), ("open-hidden", test.open_window), ("packages-effective", test.effective),
+            ("toggle-package", test.toggle), ("snapshot", test.snapshot), ("close", test.close),
+            ("saved-project", test.saved), ("run-headless", test.run_project),
+            ("local-home", test.local_home), ("stage-packages", test.stage), ("link-packages", test.link),
+            ("pin-linked", test.pin_linked), ("open-linked", test.open_window),
+            ("held-for-review", test.held_for_review), ("close-linked", test.close),
+            ("runtime-python", test.runtime_python)]
     try:
         for name, function in plan:
             test.step(name, function)
@@ -297,7 +380,8 @@ def main(argv=None) -> int:
                 test.steps.append(row)
                 echo(_line(row))
     ok = len(test.steps) == len(plan) and all(row["ok"] for row in test.steps)
-    report = {"schema": SCHEMA, "ok": ok, "repository": str(REPOSITORY), "work": str(work) if args.keep else None,
+    report = {"schema": SCHEMA, "version": VERSION, "ok": ok, "repository": str(REPOSITORY),
+              "release": args.release, "work": str(work) if args.keep else None,
               "total_ms": round((time.perf_counter() - started) * 1000.0, 1), "steps": test.steps}
     if not args.keep:
         _remove(work)
