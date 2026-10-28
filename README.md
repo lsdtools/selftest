@@ -9,7 +9,8 @@ measures one cost. A real package's behaviour is tested in that package. The pro
 ## The rules
 
 1. **Owner `lsdtest`.** Every package here is `lsdtest/<name>` (import root `lsdtest_<name>`), in a
-   `test/...` category. Nothing here is published.
+   `test/...` category. Nothing here goes to the Store or the catalog: the repository itself is
+   public (`github.com/lsdtools/selftest`), and `selftest/` links its packages as local ones.
 2. **One concern per package.** A package contributes one kind of thing, so its activation, first
    use, memory and idle cost belong to that alone.
 3. **Deterministic and cheap by default.** No network, no randomness without a seed, no work at import.
@@ -41,3 +42,25 @@ scale/
 ```
 
 The kernel's Grounds keep their projects beside them in the product; they name packages from here.
+
+## Selftest: the same checks on any machine
+
+```
+selftest/
+  selftest.py   the suite: standard library only, driving lsdtools' public commands
+  pipelines.py  the packages' pipelines, run headless inside the runtime (lsdtools python)
+```
+
+```bash
+python selftest/selftest.py              # in this checkout, with the lsdtools on PATH
+python selftest/selftest.py --lsdtools "path/to/lsdtools" --json
+lsdtools selftest                        # anywhere: downloads this repository and runs the same file
+```
+
+In a scratch home that shares the installed runtime (nothing is downloaded again), it links
+`lsdtest/rows`, `lsdtest/points` and `lsdtest/dependent` as an author's local packages, runs their
+pipelines in the runtime's Python, and opens a project pinning them in a hidden window. The window must
+list them but run none: linked code is project code, and only a person enables it. It then photographs
+the window through its own render path, closes it, runs the project headless and runs the runtime's
+Python. Every step is timed, so the report (`lsd.selftest.v1`) is also a small benchmark of the machine.
+The shells are not linked: an installed runtime ships its own.
