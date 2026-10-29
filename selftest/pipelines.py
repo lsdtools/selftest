@@ -2,8 +2,10 @@
 
 selftest.py runs this after it links the packages. It loads every installed package as the runtime
 does, then runs each extension package's pipeline through the SDK and checks the numbers: lsdtest/rows
-(a deterministic table and a scale), lsdtest/points (a CSV load with a point budget) and
-lsdtest/dependent (a step over lsdtest/points, so the dependency resolves). It prints one JSON line.
+(a deterministic table and a scale), lsdtest/points (a CSV load with a point budget),
+lsdtest/dependent (a step over lsdtest/points, so the dependency resolves) and lsdtest/jobs (a native job the product's
+JIT compiles for this CPU, run by the runtime engine: bit for bit against its NumPy reference, alone and as a pipeline's
+step). It prints one JSON line.
 """
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ import time
 from pathlib import Path
 
 #: The packages this file runs; the shells are the runtime's own (lsdtools/*) in an installed runtime.
-PACKAGES = ("lsdtest/rows", "lsdtest/points", "lsdtest/dependent")
+PACKAGES = ("lsdtest/rows", "lsdtest/points", "lsdtest/dependent", "lsdtest/jobs")
 
 
 def main() -> int:
@@ -75,9 +77,33 @@ def main() -> int:
             raise AssertionError("lsdtest/dependent did not keep every fourth point")
         return "every fourth of 100 points"
 
+    def jit_job():
+        import numpy as np
+        from lsdtest_jobs.integrate import integrate, reference
+
+        generator = np.random.default_rng(11)
+        x, y = generator.normal(size=4096), generator.normal(size=4096)
+        moved, cpu = integrate(x, y, dt=0.125, steps=8)
+        expected = reference(x, y, dt=0.125, steps=8)
+        if not np.array_equal(moved.view(np.uint64), expected.view(np.uint64)):
+            raise AssertionError(f"the JIT-compiled job differs from its reference on {cpu}")
+        return f"4096 rows x 8 steps, bit for bit, compiled for {cpu}"
+
+    def jit_pipeline():
+        from lsdtest_jobs.tool import integrate_rows
+        from lsdtest_rows.tool import load_rows
+
+        result = Engine().run(integrate_rows(input=load_rows(rows=1000, seed=3), dt=0.5, steps=2)).raise_on_error()
+        x = result.output.arrow.column("x").to_pylist()
+        y = result.output.arrow.column("y").to_pylist()
+        start = [float((i * 7 + 3) % 101) for i in range(1000)]
+        if x != [(s + yv * 0.5) + yv * 0.5 for s, yv in zip(start, y)]:
+            raise AssertionError("the JIT step's pipeline output differs from its arithmetic")
+        return "lsdtest/rows through the JIT step: 1000 rows"
+
     check("load-packages", load)
     for name, function in (("pipeline-rows", rows), ("pipeline-points", points),
-                           ("pipeline-dependent", dependent)):
+                           ("pipeline-dependent", dependent), ("jit-job", jit_job), ("jit-pipeline", jit_pipeline)):
         check(name, function)
     shutil.rmtree(folder, ignore_errors=True)
     print(json.dumps({"schema": "lsd.selftest.pipelines.v1", "ok": all(row["ok"] for row in checks),

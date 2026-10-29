@@ -1,0 +1,24 @@
+{
+  "_schema_version": 1,
+  "name": "lsdtest/jobs",
+  "display_name": "Test Jobs",
+  "version": "1.0.0",
+  "description": "A native job compiled by the product's JIT for this machine's CPU and run over a table's columns: lsdtools.jit and lsdtools.ecs end to end, bit for bit against its Python reference.",
+  "author": "LSD",
+  "publisher": "lsdtest",
+  "keywords": ["test", "jit", "jobs"],
+  "min_lsd": "1.0.0",
+  "tier": "domain",
+  "paid": false,
+  "category": "test/compute",
+  "dependencies": {},
+  "tool": "lsdtest_jobs.tool:tool",
+  "execution": {
+    "schema_version": 1,
+    "api_version": "1.0",
+    "entry": "lsdtest_jobs.tool:tool",
+    "dependencies": {},
+    "runtime_dependencies": {}
+  },
+  "warmup": {}
+}

@@ -21,7 +21,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[1]
 URL = "https://github.com/lsdtools/selftest"
 #: The packages the release carries: the extension packages (the shells are the runtime's own).
-RELEASED = ("data/rows", "data/points", "contrib/dependent")
+RELEASED = ("data/rows", "data/points", "contrib/dependent", "compute/jobs")
 NATIVE_SUFFIXES = (".dll", ".so", ".dylib", ".pyd")
 _TREE_DOMAIN = b"LSD-RUNTIME-TREE-v1\0"
 _STAMP = (1980, 1, 1, 0, 0, 0)

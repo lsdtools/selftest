@@ -42,12 +42,12 @@ import zlib
 from pathlib import Path
 
 SCHEMA = "lsd.selftest.v1"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 HERE = Path(__file__).resolve().parent
 REPOSITORY = HERE.parent
 RELEASE = f"https://github.com/lsdtools/selftest@v{VERSION}"
 #: The packages a selftest takes, in dependency order (a dependent after what it needs).
-PACKAGES = ("data/rows", "data/points", "contrib/dependent")
+PACKAGES = ("data/rows", "data/points", "contrib/dependent", "compute/jobs")
 #: The package disabled and enabled again in the open window: nothing depends on it.
 TOGGLED = "lsdtest/rows"
 _SETTLED = {"committed", "rejected", "withdrawn", "conflict", "failed"}

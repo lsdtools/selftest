@@ -33,6 +33,8 @@ test/
   data/rows          lsdtest/rows        a deterministic table and a cheap shape: the engine's per-entity
                                          and per-step pipeline cost (project_scale_v1)
   contrib/dependent  lsdtest/dependent   a step over lsdtest/points: dependency resolution and order
+  compute/jobs       lsdtest/jobs        a native job, LLVM IR the product's JIT compiles for this CPU, run by the
+                                         runtime engine over a table's columns: bit for bit against NumPy
 scale/
   generate.py        N packages x M contributions of one kind each (step, entity, command, action,
                      menu-item, main-view), with an optional import weight or warm-up and an optional
@@ -57,10 +59,17 @@ python selftest/selftest.py --lsdtools "path/to/lsdtools" --json
 lsdtools selftest                        # anywhere: downloads this repository and runs the same file
 ```
 
-In a scratch home that shares the installed runtime (nothing is downloaded again), it links
-`lsdtest/rows`, `lsdtest/points` and `lsdtest/dependent` as an author's local packages, runs their
-pipelines in the runtime's Python, and opens a project pinning them in a hidden window. The window must
-list them but run none: linked code is project code, and only a person enables it. It then photographs
-the window through its own render path, closes it, runs the project headless and runs the runtime's
-Python. Every step is timed, so the report (`lsd.selftest.v1`) is also a small benchmark of the machine.
-The shells are not linked: an installed runtime ships its own.
+In scratch homes that share the installed runtime (nothing is downloaded again), it takes
+`lsdtest/rows`, `lsdtest/points`, `lsdtest/dependent` and `lsdtest/jobs` through two lanes:
+
+- **release:** installed from this repository's GitHub release (`selftest/release.py` builds its package
+  assets: a package-release-v1 collection), sealed for this machine and locked into a new project. Their
+  pipelines run in the runtime's Python, `lsdtest/jobs`' native job compiled by the product's JIT for this CPU
+  and checked bit for bit against NumPy. The project opens in a hidden window where every package is
+  effective; one is disabled and enabled again, each change settled on its receipt; the window is
+  photographed through its own render path and closed, the saved project checked, and it runs headless.
+- **local:** the same packages linked as an author's local packages. The window must list them but run
+  none: linked code is project code, and only a person enables it.
+
+Every step is timed, so the report (`lsd.selftest.v1`) is also a small benchmark of the machine. The shells
+are not taken: an installed runtime ships its own.
